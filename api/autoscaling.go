@@ -408,7 +408,7 @@ func (c *AutoscalingController) scaleDownDecision(clusterName string, containerI
 		clusterMemoryNeeded = instanceMemory
 		clusterCpuNeeded = instanceCpu
 	}
-	for k, _ := range totalFreeCpu {
+	for k := range totalFreeCpu {
 		asAutoscalingControllerLogger.Debugf("%v: Have %d cpu available, need %d", k, totalFreeCpu[k], clusterCpuNeeded)
 		asAutoscalingControllerLogger.Debugf("%v: Have %d memory available, need %d", k, totalFreeMemory[k], clusterMemoryNeeded)
 		if totalFreeCpu[k] >= clusterCpuNeeded && totalFreeMemory[k] >= clusterMemoryNeeded {

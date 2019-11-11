@@ -384,7 +384,7 @@ func (a *API) deployServiceValidator(serviceName string, d service.Deploy) error
 		return errors.New("service name needs to be at least 3 characters")
 	}
 	if strings.ToLower(d.ServiceProtocol) != "none" && d.ServicePort == 0 {
-		return errors.New("ServicePort needs to be set if ServiceProtocol is not set to none.")
+		return errors.New("ServicePort needs to be set if ServiceProtocol is not set to none")
 	}
 	t := false
 	for _, container := range d.Containers {

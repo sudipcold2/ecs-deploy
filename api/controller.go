@@ -53,7 +53,7 @@ func (c *Controller) Deploy(serviceName string, d service.Deploy) (*service.Depl
 	for _, container := range d.Containers {
 		if container.Memory == 0 && container.MemoryReservation == 0 {
 			controllerLogger.Errorf("Could not deploy %v: Memory / MemoryReservation not set", serviceName)
-			return nil, errors.New("At least one of 'memory' or 'memoryReservation' must be specified within the container specification.")
+			return nil, errors.New("at least one of 'memory' or 'memoryReservation' must be specified within the container specification")
 		}
 	}
 
@@ -133,7 +133,7 @@ func (c *Controller) Deploy(serviceName string, d service.Deploy) (*service.Depl
 			return nil, errors.New("ECS Service not found and resource creation is disabled")
 		}
 	} else if err != nil {
-		return nil, errors.New("Error during checking whether service exists")
+		return nil, errors.New("error during checking whether service exists")
 	} else {
 		// create service in dynamodb
 		err = c.checkAndCreateServiceInDynamo(s, d)
@@ -193,8 +193,14 @@ func (c *Controller) updateDeployment(d service.Deploy, ddLast *service.DynamoDe
 			var alb *ecs.ALB
 			if d.LoadBalancer == "" {
 				alb, err = ecs.NewALB(d.Cluster)
+				if err != nil {
+					return err
+				}
 			} else {
 				alb, err = ecs.NewALB(d.LoadBalancer)
+				if err != nil {
+					return err
+				}
 			}
 			targetGroupArn, err := alb.GetTargetGroupArn(serviceName)
 			if err != nil {
@@ -214,22 +220,25 @@ func (c *Controller) updateDeployment(d service.Deploy, ddLast *service.DynamoDe
 			}
 			// update loadbalancer if changed
 			var noLBChange bool
-			if ddLast.DeployData.LoadBalancer == "" && strings.ToLower(d.LoadBalancer) == strings.ToLower(d.Cluster) {
+			if ddLast.DeployData.LoadBalancer == "" && strings.EqualFold(d.LoadBalancer, d.Cluster) {
 				noLBChange = true
 			}
-			if strings.ToLower(d.LoadBalancer) != strings.ToLower(ddLast.DeployData.LoadBalancer) && !noLBChange && strings.ToLower(d.ServiceProtocol) != "none" {
+			if strings.EqualFold(d.LoadBalancer, ddLast.DeployData.LoadBalancer) && !noLBChange && strings.ToLower(d.ServiceProtocol) != "none" {
 				controllerLogger.Infof("LoadBalancer change detected for service %s", serviceName)
 				// delete old loadbalancer rules
 				var oldAlb *ecs.ALB
 				if ddLast.DeployData.LoadBalancer == "" {
 					oldAlb, err = ecs.NewALB(ddLast.DeployData.Cluster)
+					if err != nil {
+						return err
+					}
 				} else {
 					oldAlb, err = ecs.NewALB(ddLast.DeployData.LoadBalancer)
+					if err != nil {
+						return err
+					}
 				}
-				err = c.deleteRulesForTarget(serviceName, d, targetGroupArn, oldAlb)
-				if err != nil {
-
-				}
+				_ = c.deleteRulesForTarget(serviceName, d, targetGroupArn, oldAlb)
 				// delete target group
 				controllerLogger.Debugf("Deleting target group for service: %v", serviceName)
 				err = oldAlb.DeleteTargetGroup(*targetGroupArn)
@@ -427,7 +436,7 @@ func (c *Controller) createService(serviceName string, d service.Deploy, taskDef
 			return nil, err
 		}
 	} else if err != nil {
-		return nil, errors.New("Error during checking whether ecs service role exists")
+		return nil, errors.New("error during checking whether ecs service role exists")
 	}
 
 	// create ecs service
@@ -493,20 +502,6 @@ func (c *Controller) deleteRulesForTarget(serviceName string, d service.Deploy, 
 		alb.DeleteRule(ruleArn)
 	}
 	return nil
-}
-
-// delete rule for a targetgroup with specific listener
-func (c *Controller) deleteRuleForTargetWithListener(serviceName string, r *service.DeployRuleConditions, targetGroupArn *string, alb *ecs.ALB, listener string) error {
-	_, conditionField, conditionValue := c.getALBConditionFieldAndValue(*r, alb.GetDomain())
-	err := alb.GetRulesForAllListeners()
-	if err != nil {
-		return err
-	}
-	ruleArn, _, err := alb.FindRule(listener, *targetGroupArn, conditionField, conditionValue)
-	if err != nil {
-		return err
-	}
-	return alb.DeleteRule(*ruleArn)
 }
 
 // Update rule for a specific targetGroups
@@ -620,10 +615,7 @@ func (c *Controller) describeServices() ([]service.RunningService, error) {
 	}
 
 	sort.Slice(rss, func(i, j int) bool {
-		if strings.Compare(rss[i].ServiceName, rss[j].ServiceName) == 1 {
-			return false
-		}
-		return true
+		return !(strings.Compare(rss[i].ServiceName, rss[j].ServiceName) == 1)
 	})
 
 	return rss, nil
@@ -642,7 +634,7 @@ func (c *Controller) describeService(serviceName string) (service.RunningService
 				return rs, err
 			}
 			if len(rss) != 1 {
-				return rs, errors.New("Empty RunningService object returned")
+				return rs, errors.New("empty RunningService object returned")
 			}
 			rs = rss[0]
 			return rs, nil
@@ -758,33 +750,6 @@ func (c *Controller) deleteServiceParameter(serviceName, userId, creds, paramete
 	return creds, err
 }
 
-func (c *Controller) deleteService(serviceName string) error {
-	var ds *service.DynamoServices
-	var clusterName string
-	s := service.NewService()
-	err := s.GetServices(ds)
-	if err != nil {
-		return err
-	}
-	for _, v := range ds.Services {
-		if v.S == serviceName {
-			clusterName = v.C
-		}
-	}
-	alb, err := ecs.NewALB(clusterName)
-	if err != nil {
-		return err
-	}
-	targetGroupArn, err := alb.GetTargetGroupArn(serviceName)
-	if err != nil {
-		return err
-	}
-	err = alb.DeleteTargetGroup(*targetGroupArn)
-	if err != nil {
-		return err
-	}
-	return nil
-}
 func (c *Controller) scaleService(serviceName string, desiredCount int64) error {
 	s := service.NewService()
 	s.ServiceName = serviceName
@@ -931,7 +896,7 @@ func (c *Controller) Resume() error {
 	for i, ds := range dss {
 		services[ds.C] = append(services[ds.C], dss[i].S)
 	}
-	for clusterName, _ := range services {
+	for clusterName := range services {
 		var clusterNotFound bool
 		autoScalingGroupName, err := autoscaling.GetAutoScalingGroupByTag(clusterName)
 		if err != nil {
@@ -987,7 +952,7 @@ func (c *Controller) Resume() error {
 			}
 			// TODO: check for pending autoscaling actions
 			if len(cis) == 0 {
-				return errors.New("Couldn't retrieve any EC2 Container instances")
+				return errors.New("couldn't retrieve any EC2 Container instances")
 			}
 			f, err := e.ConvertResourceToRir(cis[0].RegisteredResources)
 			if err != nil {
@@ -1159,7 +1124,7 @@ func (c *Controller) Bootstrap(b *Flags) error {
 	}
 	fmt.Printf("Created ECS Cluster with ARN: %v\n", *clusterArn)
 	if b.AlbSecurityGroups == "" || b.EcsSubnets == "" {
-		return errors.New("Incorrect test arguments supplied")
+		return errors.New("incorrect test arguments supplied")
 	}
 	if len(b.LoadBalancers) == 0 {
 		b.LoadBalancers = []service.LoadBalancer{
@@ -1238,6 +1203,9 @@ func (c *Controller) Bootstrap(b *Flags) error {
 			return err
 		}
 		_, err = c.Deploy(ecsDeploy.ServiceName, ecsDeploy)
+		if err != nil {
+			return err
+		}
 		s.ServiceName = ecsDeploy.ServiceName
 		var deployed bool
 		for i := 0; i < 30 && !deployed; i++ {
@@ -1248,7 +1216,7 @@ func (c *Controller) Bootstrap(b *Flags) error {
 			if dd != nil && dd.Status == "success" {
 				deployed = true
 			} else if dd != nil && dd.Status == "failed" {
-				return errors.New("Deployment of ecs-deploy failed")
+				return errors.New("deployment of ecs-deploy failed")
 			} else {
 				fmt.Printf("Waiting for %v to to be deployed (status: %v)\n", ecsDeploy.ServiceName, dd.Status)
 				time.Sleep(30 * time.Second)
@@ -1330,6 +1298,9 @@ func (c *Controller) DeleteCluster(b *Flags) error {
 			return err
 		}
 		services, err := e.DescribeServices(clusterName, serviceArns, false, false, false)
+		if err != nil {
+			return err
+		}
 		for _, v := range services {
 			targetGroup, _ := alb.GetTargetGroupArn(v.ServiceName)
 			if targetGroup != nil {
@@ -1430,7 +1401,7 @@ func (c *Controller) putServiceAutoscaling(serviceName string, autoscaling servi
 			return result, err
 		}
 		if len(a) == 0 {
-			return result, errors.New("Couldn't describe scalable target")
+			return result, errors.New("couldn't describe scalable target")
 		}
 		if a[0].MinimumCount != autoscaling.MinimumCount || a[0].MaximumCount != autoscaling.MaximumCount {
 			err = as.RegisterScalableTarget(autoscaling.MinimumCount, autoscaling.MaximumCount, resourceId, *autoscalingRoleArn)
@@ -1504,6 +1475,9 @@ func (c *Controller) getServiceAutoscaling(serviceName string) (service.Autoscal
 	s := service.NewService()
 	s.ServiceName = serviceName
 	clusterName, err := s.GetClusterName()
+	if err != nil {
+		return a, err
+	}
 	autoscaling := ecs.AutoScaling{}
 	cloudwatch := ecs.CloudWatch{}
 
@@ -1523,7 +1497,7 @@ func (c *Controller) getServiceAutoscaling(serviceName string) (service.Autoscal
 		return a, err
 	}
 	if len(as) == 0 {
-		return a, errors.New("No scalable target returned")
+		return a, errors.New("no scalable target returned")
 	}
 	a = as[0]
 
@@ -1570,7 +1544,7 @@ func (c *Controller) deleteServiceAutoscalingPolicy(serviceName, policyName stri
 	}
 
 	if dd.Scaling.Autoscaling.ResourceId == "" {
-		return errors.New("Autoscaling not active for service")
+		return errors.New("autoscaling not active for service")
 	}
 
 	var newPolicyNames []string
@@ -1583,7 +1557,7 @@ func (c *Controller) deleteServiceAutoscalingPolicy(serviceName, policyName stri
 		}
 	}
 	if !found {
-		return fmt.Errorf("Autoscaling policy %v not found", policyName)
+		return fmt.Errorf("autoscaling policy %v not found", policyName)
 	}
 
 	err = autoscaling.DeleteScalingPolicy(policyName, dd.Scaling.Autoscaling.ResourceId)
@@ -1618,7 +1592,7 @@ func (c *Controller) deleteServiceAutoscaling(serviceName string) error {
 	}
 
 	if dd.Scaling.Autoscaling.ResourceId == "" {
-		return errors.New("Autoscaling not active for service")
+		return errors.New("autoscaling not active for service")
 	}
 
 	for _, policyName := range dd.Scaling.Autoscaling.PolicyNames {

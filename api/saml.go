@@ -93,14 +93,6 @@ func newSAML(strIdpMetadataURL string, X509KeyPair, keyPEMBlock []byte) (*SAML, 
 	return &s, nil
 }
 
-func (s *SAML) getIDPSSOURL() string {
-	return s.idpMetadataURL.String()
-}
-
-func (s *SAML) getIDPCert() string {
-	return "cert"
-}
-
 func (s *SAML) samlEnabledHandler(c *gin.Context) {
 	if util.GetEnv("SAML_ENABLED", "") == "yes" {
 		c.JSON(200, gin.H{

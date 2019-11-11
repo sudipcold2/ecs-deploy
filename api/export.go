@@ -304,7 +304,7 @@ func (e *Export) getListenerRules(serviceName string, clusterName string, listen
 		for _, y := range e.deployData.RuleConditions {
 			for _, l := range e.alb[loadBalancer].Listeners {
 				for _, l2 := range y.Listeners {
-					if l.Protocol != nil && strings.ToLower(*l.Protocol) == strings.ToLower(l2) {
+					if l.Protocol != nil && strings.EqualFold(*l.Protocol, l2) {
 						a := strings.Replace(*albListenerRule, "${LISTENER_ARN}", *l.ListenerArn, -1)
 						var c, cc string
 						var f []string
