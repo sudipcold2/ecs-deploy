@@ -18,9 +18,13 @@ type ECR struct {
 
 // Creates ECR repository
 func (e *ECR) CreateRepository() error {
+	scanOnPush := true
 	svc := ecr.New(session.New())
 	input := &ecr.CreateRepositoryInput{
 		RepositoryName: aws.String(e.RepositoryName),
+		ImageScanningConfiguration: &ecr.ImageScanningConfiguration{
+			ScanOnPush: &scanOnPush,
+		},
 	}
 
 	res, err := svc.CreateRepository(input)
